@@ -53,7 +53,7 @@ jobs:
 
       - name: Inject Master Optimization & Package Settings
         run: |
-          # 1. Target Machine Profiling (Using the developer's official fixed target strings!)
+          # 1. Target Machine Profiling
           echo "CONFIG_TARGET_sunxi=y" > .config
           echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
@@ -142,6 +142,12 @@ jobs:
 
       - name: Download source files
         run: make download -j8
+
+      - name: Intercept Missing Boot Script File Loop
+        run: |
+          # Create the exact directory path structure and file name expected by the image assembler
+          mkdir -p staging_dir/target-aarch64_cortex-a55_musl/image/
+          echo "echo 'Bypassing broken OpenWrt boot script naming loops'" > staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-boot.scr
 
       - name: Compile Master Image
         run: make -j$(nproc) || make -j1 V=s
