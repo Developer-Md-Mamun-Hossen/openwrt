@@ -33,15 +33,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-openwrt-cortexa55-
 
-      - name: Strip Out Avaota A1 Configuration Blocks Completely
+      - name: Strip Out Avaota A1 & Hotfix Hardcoded Image Naming Bugs
         run: |
-          # Forcefully remove the secondary device node profile loop from image targets
+          # 1. Forcefully remove the secondary device node profile loop from image targets
           if [ -f target/linux/sunxi/image/cortexa55.mk ]; then
             sed -i '/define Device\/avaota-a1/,/endef/d' target/linux/sunxi/image/cortexa55.mk || true
             sed -i 's/TARGET_DEVICES += avaota-a1//g' target/linux/sunxi/image/cortexa55.mk || true
+            
+            # CRITICAL FINISH LINE FIX: Fix the hardcoded bootloader binary filename mismatch!
+            # This forces the builder to search for the actual compiled 'radxa_cubie-a5e' u-boot prefix binary.
+            sed -i 's/\$(DEVICE_NAME)-u-boot-with-spl.bin/radxa_cubie-a5e-u-boot-with-spl.bin/g' target/linux/sunxi/image/cortexa55.mk || true
           fi
           
-          # Clean out reference entries from the primary bootloader Makefile configuration rules
+          # 2. Clean out reference entries from the primary bootloader Makefile configuration rules
           if [ -f package/boot/uboot-sunxi/Makefile ]; then
             sed -i '/avaota-a1/d' package/boot/uboot-sunxi/Makefile || true
           fi
@@ -53,7 +57,7 @@ jobs:
 
       - name: Inject Master Optimization & Package Settings
         run: |
-          # 1. Target Machine Profiling
+          # 1. Target Machine Profiling (Using the developer's official fixed target strings!)
           echo "CONFIG_TARGET_sunxi=y" > .config
           echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
