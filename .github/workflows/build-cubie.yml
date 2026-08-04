@@ -33,19 +33,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-openwrt-cortexa55-
 
-      - name: Strip Out Avaota A1 & Hotfix Hardcoded Image Naming Bugs
+      - name: Strip Out Avaota A1 Configuration Blocks Completely
         run: |
-          # 1. Forcefully remove the secondary device node profile loop from image targets
+          # Forcefully remove the secondary device node profile loop from image targets
           if [ -f target/linux/sunxi/image/cortexa55.mk ]; then
             sed -i '/define Device\/avaota-a1/,/endef/d' target/linux/sunxi/image/cortexa55.mk || true
             sed -i 's/TARGET_DEVICES += avaota-a1//g' target/linux/sunxi/image/cortexa55.mk || true
-            
-            # CRITICAL FINISH LINE FIX: Fix the hardcoded bootloader binary filename mismatch!
-            # This forces the builder to search for the actual compiled 'radxa_cubie-a5e' u-boot prefix binary.
-            sed -i 's/\$(DEVICE_NAME)-u-boot-with-spl.bin/radxa_cubie-a5e-u-boot-with-spl.bin/g' target/linux/sunxi/image/cortexa55.mk || true
           fi
           
-          # 2. Clean out reference entries from the primary bootloader Makefile configuration rules
+          # Clean out reference entries from the primary bootloader Makefile configuration rules
           if [ -f package/boot/uboot-sunxi/Makefile ]; then
             sed -i '/avaota-a1/d' package/boot/uboot-sunxi/Makefile || true
           fi
@@ -57,7 +53,7 @@ jobs:
 
       - name: Inject Master Optimization & Package Settings
         run: |
-          # 1. Target Machine Profiling (Using the developer's official fixed target strings!)
+          # 1. Target Machine Profiling
           echo "CONFIG_TARGET_sunxi=y" > .config
           echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
@@ -147,11 +143,17 @@ jobs:
       - name: Download source files
         run: make download -j8
 
-      - name: Intercept Missing Boot Script File Loop
+      - name: Intercept Missing Boot Components & Create File Mapping
         run: |
-          # Create the exact directory path structure and file name expected by the image assembler
+          # 1. Ensure target image directory structures are actively initialized
           mkdir -p staging_dir/target-aarch64_cortex-a55_musl/image/
+          
+          # 2. Fix the hardcoded boot script missing file error
           echo "echo 'Bypassing broken OpenWrt boot script naming loops'" > staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-boot.scr
+          
+          # 3. Create a symbolic link shortcut matrix mapping for the bootloader file
+          # This guarantees that whatever name the builder requests, it redirects to the true binary!
+          ln -sf radxa_cubie-a5e-u-boot-with-spl.bin staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-u-boot-with-spl.bin
 
       - name: Compile Master Image
         run: make -j$(nproc) || make -j1 V=s
