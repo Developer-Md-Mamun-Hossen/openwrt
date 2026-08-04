@@ -25,6 +25,18 @@ jobs:
           repository: wigyori/openwrt
           ref: sunxi-a527-support
 
+      - name: Show exact commit being built
+        run: |
+          echo "Building from commit:"
+          git log -1 --format="%H %s (%ci)"
+
+      - name: Confirm Cubie A5E U-Boot block is present (unmodified from upstream)
+        run: |
+          grep -A6 "U-Boot/radxa-cubie-a5e" package/boot/uboot-sunxi/Makefile || {
+            echo "::error::radxa-cubie-a5e U-Boot definition not found in upstream Makefile"
+            exit 1
+          }
+
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
         with:
@@ -32,19 +44,6 @@ jobs:
           key: ${{ runner.os }}-openwrt-cortexa55-${{ hashFiles('target/linux/sunxi/Makefile') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-cortexa55-
-
-      - name: Strip Out Avaota A1 Configuration Blocks Completely
-        run: |
-          # Forcefully remove the secondary device node profile loop from image targets
-          if [ -f target/linux/sunxi/image/cortexa55.mk ]; then
-            sed -i '/define Device\/avaota-a1/,/endef/d' target/linux/sunxi/image/cortexa55.mk || true
-            sed -i 's/TARGET_DEVICES += avaota-a1//g' target/linux/sunxi/image/cortexa55.mk || true
-          fi
-          
-          # Clean out reference entries from the primary bootloader Makefile configuration rules
-          if [ -f package/boot/uboot-sunxi/Makefile ]; then
-            sed -i '/avaota-a1/d' package/boot/uboot-sunxi/Makefile || true
-          fi
 
       - name: Update and Install Feeds
         run: |
@@ -57,18 +56,18 @@ jobs:
           echo "CONFIG_TARGET_sunxi=y" > .config
           echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
-          
+
           # 2. Storage Partition Size Expansion (Prevents image compilation overflow)
           echo "CONFIG_TARGET_KERNEL_PARTSIZE=64" >> .config
           echo "CONFIG_TARGET_ROOTFS_PARTSIZE=1024" >> .config
-          
+
           # 3. Base Routing Enhancements (Drop basic dnsmasq, bake feature-complete dnsmasq-full)
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_dnsmasq=n" >> .config
           echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
           echo "CONFIG_PACKAGE_vnstat2=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-vnstat2=y" >> .config
-          
+
           # 4. Terminal Emulator, File Manager, Real-time Monitors & Watchdog
           echo "CONFIG_PACKAGE_ttyd=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
@@ -77,11 +76,11 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
           echo "CONFIG_PACKAGE_watchcat=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-watchcat=y" >> .config
-          
+
           # 5. Smart Queue Management (SQM) Bufferbloat Mitigation Controls
           echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
-          
+
           # 6. AdGuard Home Core Service & LuCI Web View Interface Integration
           echo "CONFIG_PACKAGE_adguardhome=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
@@ -89,7 +88,7 @@ jobs:
           # 7. Cloudflare Tunnels (Zero Trust Daemon Engine & LuCI Management Tab)
           echo "CONFIG_PACKAGE_cloudflared=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-cloudflared=y" >> .config
-          
+
           # 8. Complete Integrated Container Stack Layer (Docker Engine Suite)
           echo "CONFIG_PACKAGE_docker=y" >> .config
           echo "CONFIG_PACKAGE_dockerd=y" >> .config
@@ -98,12 +97,12 @@ jobs:
           echo "CONFIG_PACKAGE_kmod-veth=y" >> .config
           echo "CONFIG_PACKAGE_kmod-fs-btrfs=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-extra=y" >> .config
-          
+
           # 9. High Performance Full Cone NAT (NAT1 Gaming Pipe Engine)
           echo "CONFIG_PACKAGE_iptables-mod-fullconenat=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-fullconenat=y" >> .config
           echo "CONFIG_PACKAGE_kmod-nft-fullconenat=y" >> .config
-          
+
           # 10. Hardware Extensions (Monolithic Google BBR TCP, Core Load Balancing & Crypto Engine)
           echo "CONFIG_KERNEL_TCP_CONG_BBR=y" >> .config
           echo "CONFIG_PACKAGE_irqbalance=y" >> .config
@@ -118,7 +117,7 @@ jobs:
           echo "CONFIG_PACKAGE_iptables-mod-ipopt=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-nat=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-conntrack=y" >> .config
-          
+
           # 12. UNIVERSAL COMPATIBILITY MATRIX (Pre-baking missing standard libraries)
           echo "CONFIG_PACKAGE_libstdcpp=y" >> .config
           echo "CONFIG_PACKAGE_libpthread=y" >> .config
@@ -137,26 +136,28 @@ jobs:
           echo "CONFIG_PACKAGE_wget-ssl=y" >> .config
           echo "CONFIG_PACKAGE_ca-bundle=y" >> .config
           echo "CONFIG_PACKAGE_ca-certificates=y" >> .config
-          
+
           make defconfig
 
       - name: Download source files
         run: make download -j8
 
-      - name: Intercept Missing Boot Components & Create Fake Binary Targets
-        run: |
-          # 1. Ensure target image directory structures are initialized
-          mkdir -p staging_dir/target-aarch64_cortex-a55_musl/image/
-          
-          # 2. Fix the hardcoded boot script missing file error
-          echo "echo 'Bypassing broken OpenWrt boot script naming loops'" > staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-boot.scr
-          
-          # 3. Create a fake fallback u-boot binary padding file (128KB filled with zeroes)
-          # This completely satisfies line 16141 so the image compiler passes without crashing!
-          dd if=/dev/zero of=staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-u-boot-with-spl.bin bs=1k count=128
-
       - name: Compile Master Image
         run: make -j$(nproc) || make -j1 V=s
+
+      - name: Verify real U-Boot binary was produced
+        run: |
+          f=$(find build_dir bin -iname "*cubie-a5e*u-boot*with-spl*" 2>/dev/null | head -1)
+          if [ -z "$f" ]; then
+            echo "::error::No U-Boot SPL binary found for cubie-a5e — build did not actually produce a real bootloader"
+            exit 1
+          fi
+          size=$(stat -c%s "$f")
+          if [ "$size" -lt 100000 ]; then
+            echo "::error::U-Boot SPL binary ($f) is only $size bytes — likely fake/corrupt, not a real bootloader"
+            exit 1
+          fi
+          echo "OK: found real U-Boot binary at $f ($size bytes)"
 
       - name: Upload Perfect Flashable Image File
         uses: actions/upload-artifact@v4
