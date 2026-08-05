@@ -1,4 +1,4 @@
-name: Debug - Isolate uboot-sunxi build error
+name: Build Ultimate Native Radxa Cubie A5E
 
 on:
   workflow_dispatch:
@@ -35,22 +35,91 @@ jobs:
             exit 1
           }
 
-      - name: Minimal config - target only, no extra packages
-        run: |
-          echo "CONFIG_TARGET_sunxi=y" > .config
-          echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
-          echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
-          make defconfig
+      - name: Cache OpenWRT Toolchain (Speeds up next builds!)
+        uses: actions/cache@v4
+        with:
+          path: staging_dir/toolchain-*
+          key: ${{ runner.os }}-openwrt-cortexa55-${{ hashFiles('target/linux/sunxi/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-cortexa55-
 
       - name: Update and Install Feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Inject Master Optimization & Package Settings
+        run: |
+          echo "CONFIG_TARGET_sunxi=y" > .config
+          echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
+          echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
+          echo "CONFIG_TARGET_KERNEL_PARTSIZE=64" >> .config
+          echo "CONFIG_TARGET_ROOTFS_PARTSIZE=1024" >> .config
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_dnsmasq=n" >> .config
+          echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
+          echo "CONFIG_PACKAGE_vnstat2=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-vnstat2=y" >> .config
+          echo "CONFIG_PACKAGE_ttyd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-filemanager=y" >> .config
+          echo "CONFIG_PACKAGE_nlbwmon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
+          echo "CONFIG_PACKAGE_watchcat=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-watchcat=y" >> .config
+          echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+          echo "CONFIG_PACKAGE_adguardhome=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-adguardhome=y" >> .config
+          echo "CONFIG_PACKAGE_cloudflared=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-cloudflared=y" >> .config
+          echo "CONFIG_PACKAGE_docker=y" >> .config
+          echo "CONFIG_PACKAGE_dockerd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-dockerman=y" >> .config
+          echo "CONFIG_KERNEL_CGROUPS=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-veth=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-fs-btrfs=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-ipt-extra=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-mod-fullconenat=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-ipt-fullconenat=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-nft-fullconenat=y" >> .config
+          echo "CONFIG_KERNEL_TCP_CONG_BBR=y" >> .config
+          echo "CONFIG_PACKAGE_irqbalance=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-irqbalance=y" >> .config
+          echo "CONFIG_PACKAGE_libopenssl-armv8=y" >> .config
+          echo "CONFIG_PACKAGE_iptables=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-mod-conntrack-extra=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-mod-nat-extra=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-mod-ipopt=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-ipt-nat=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-ipt-conntrack=y" >> .config
+          echo "CONFIG_PACKAGE_libstdcpp=y" >> .config
+          echo "CONFIG_PACKAGE_libpthread=y" >> .config
+          echo "CONFIG_PACKAGE_librt=y" >> .config
+          echo "CONFIG_PACKAGE_libev=y" >> .config
+          echo "CONFIG_PACKAGE_libuv=y" >> .config
+          echo "CONFIG_PACKAGE_libevent2=y" >> .config
+          echo "CONFIG_PACKAGE_zlib=y" >> .config
+          echo "CONFIG_PACKAGE_libopenssl=y" >> .config
+          echo "CONFIG_PACKAGE_libmbedtls=y" >> .config
+          echo "CONFIG_PACKAGE_libnetfilter-conntrack=y" >> .config
+          echo "CONFIG_PACKAGE_libnfnetlink=y" >> .config
+          echo "CONFIG_PACKAGE_libmnl=y" >> .config
+          echo "CONFIG_PACKAGE_bash=y" >> .config
+          echo "CONFIG_PACKAGE_curl=y" >> .config
+          echo "CONFIG_PACKAGE_wget-ssl=y" >> .config
+          echo "CONFIG_PACKAGE_ca-bundle=y" >> .config
+          echo "CONFIG_PACKAGE_ca-certificates=y" >> .config
+          make defconfig
+
+      - name: Download source files
+        run: make download -j8
+
       - name: Build required host tools (libdeflate-gzip, etc.) - prerequisite
         run: make tools/compile -j$(nproc) 2>&1 | tail -100
 
-      - name: Build toolchain (needed to cross-compile U-Boot)
+      - name: Build toolchain (needed to cross-compile everything)
         run: make toolchain/compile -j$(nproc) 2>&1 | tail -100
 
       - name: Fix missing libyaml pkg-config file for OpenWrt's sandboxed PKG_CONFIG_PATH
@@ -73,15 +142,32 @@ jobs:
           EOF
           cat "$OWRT_PKGCONFIG_DIR/yaml-0.1.pc"
 
-      - name: Download uboot-sunxi source
-        run: make package/boot/uboot-sunxi/download V=s
+      - name: Compile Master Image
+        run: make -j$(nproc) 2>&1 | tee build_full.log
 
-      - name: Build ONLY uboot-sunxi with full verbosity (the real test)
-        run: make package/boot/uboot-sunxi/compile V=s 2>&1 | tee uboot_only.log
-
-      - name: Upload isolated uboot build log (always, pass or fail)
+      - name: Upload full build log (always, for diagnosis)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uboot-only-log
-          path: uboot_only.log
+          name: build-log-full
+          path: build_full.log
+
+      - name: Verify real U-Boot binary was produced
+        run: |
+          f=$(find build_dir bin -iname "*cubie-a5e*u-boot*with-spl*" 2>/dev/null | head -1)
+          if [ -z "$f" ]; then
+            echo "::error::No U-Boot SPL binary found for cubie-a5e — build did not actually produce a real bootloader"
+            exit 1
+          fi
+          size=$(stat -c%s "$f")
+          if [ "$size" -lt 100000 ]; then
+            echo "::error::U-Boot SPL binary ($f) is only $size bytes — likely fake/corrupt, not a real bootloader"
+            exit 1
+          fi
+          echo "OK: found real U-Boot binary at $f ($size bytes)"
+
+      - name: Upload Perfect Flashable Image File
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ultimate_Native_Radxa_A5E_OpenWRT
+          path: bin/targets/sunxi/cortexa55/*
