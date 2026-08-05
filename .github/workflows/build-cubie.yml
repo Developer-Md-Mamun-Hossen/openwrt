@@ -19,6 +19,26 @@ jobs:
             g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools \
             rsync swig unzip zlib1g-dev file wget quilt cpio libyaml-dev pkg-config
 
+      - name: Fix missing libyaml pkg-config file (Ubuntu libyaml-dev packaging gap)
+        run: |
+          MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+          LIBDIR="/usr/lib/$MULTIARCH"
+          sudo mkdir -p "$LIBDIR/pkgconfig"
+          cat <<EOF | sudo tee "$LIBDIR/pkgconfig/yaml-0.1.pc" > /dev/null
+          prefix=/usr
+          exec_prefix=\${prefix}
+          libdir=$LIBDIR
+          includedir=\${prefix}/include
+
+          Name: yaml-0.1
+          Description: YAML 1.1 parser and emitter library
+          Version: 0.1
+          Libs: -L\${libdir} -lyaml
+          Cflags: -I\${includedir}
+          EOF
+          echo "Verifying pkg-config now finds yaml-0.1:"
+          pkg-config --exists yaml-0.1 && pkg-config --libs yaml-0.1 || { echo "::error::pkg-config still can't find yaml-0.1"; exit 1; }
+
       - name: Checkout Developer PR Branch Directly (pinned to pre-Avaota commit)
         uses: actions/checkout@v4
         with:
@@ -27,6 +47,13 @@ jobs:
 
       - name: Show exact commit being built
         run: git log -1 --format="%H %s (%ci)"
+
+      - name: Confirm Cubie A5E U-Boot block is present (unmodified from upstream)
+        run: |
+          grep -A6 "U-Boot/radxa-cubie-a5e" package/boot/uboot-sunxi/Makefile || {
+            echo "::error::radxa-cubie-a5e U-Boot definition not found in upstream Makefile"
+            exit 1
+          }
 
       - name: Minimal config - target only, no extra packages
         run: |
@@ -39,12 +66,6 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-      - name: Build required host tools (libdeflate, etc.) - prerequisite step
-        run: make tools/compile -j$(nproc) V=s 2>&1 | tail -200
-
-      - name: Build toolchain (needed to actually compile U-Boot)
-        run: make toolchain/compile -j$(nproc) 2>&1 | tail -200
 
       - name: Download uboot-sunxi source
         run: make package/boot/uboot-sunxi/download V=s
