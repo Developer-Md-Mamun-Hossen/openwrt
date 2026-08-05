@@ -19,25 +19,6 @@ jobs:
             g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools \
             rsync swig unzip zlib1g-dev file wget quilt cpio libyaml-dev pkg-config
 
-      - name: Fix missing libyaml pkg-config file (Ubuntu libyaml-dev packaging gap)
-        run: |
-          MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
-          LIBDIR="/usr/lib/$MULTIARCH"
-          sudo mkdir -p "$LIBDIR/pkgconfig"
-          cat <<EOF | sudo tee "$LIBDIR/pkgconfig/yaml-0.1.pc" > /dev/null
-          prefix=/usr
-          exec_prefix=\${prefix}
-          libdir=$LIBDIR
-          includedir=\${prefix}/include
-
-          Name: yaml-0.1
-          Description: YAML 1.1 parser and emitter library
-          Version: 0.1
-          Libs: -L\${libdir} -lyaml
-          Cflags: -I\${includedir}
-          EOF
-          pkg-config --exists yaml-0.1 && pkg-config --libs yaml-0.1 || { echo "::error::pkg-config still can't find yaml-0.1"; exit 1; }
-
       - name: Checkout Developer PR Branch Directly (pinned to pre-Avaota commit)
         uses: actions/checkout@v4
         with:
@@ -71,6 +52,26 @@ jobs:
 
       - name: Build toolchain (needed to cross-compile U-Boot)
         run: make toolchain/compile -j$(nproc) 2>&1 | tail -100
+
+      - name: Fix missing libyaml pkg-config file for OpenWrt's sandboxed PKG_CONFIG_PATH
+        run: |
+          MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+          SYS_LIBDIR="/usr/lib/$MULTIARCH"
+          OWRT_PKGCONFIG_DIR="$GITHUB_WORKSPACE/staging_dir/host/lib/pkgconfig"
+          mkdir -p "$OWRT_PKGCONFIG_DIR"
+          cat > "$OWRT_PKGCONFIG_DIR/yaml-0.1.pc" <<EOF
+          prefix=/usr
+          exec_prefix=\${prefix}
+          libdir=$SYS_LIBDIR
+          includedir=\${prefix}/include
+
+          Name: yaml-0.1
+          Description: YAML 1.1 parser and emitter library
+          Version: 0.1
+          Libs: -L\${libdir} -lyaml
+          Cflags: -I\${includedir}
+          EOF
+          cat "$OWRT_PKGCONFIG_DIR/yaml-0.1.pc"
 
       - name: Download uboot-sunxi source
         run: make package/boot/uboot-sunxi/download V=s
