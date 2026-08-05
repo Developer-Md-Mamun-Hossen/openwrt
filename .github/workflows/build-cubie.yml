@@ -40,10 +40,16 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Download only what uboot-sunxi needs
+      - name: Build required host tools (libdeflate, etc.) - prerequisite step
+        run: make tools/compile -j$(nproc) V=s 2>&1 | tail -200
+
+      - name: Build toolchain (needed to actually compile U-Boot)
+        run: make toolchain/compile -j$(nproc) 2>&1 | tail -200
+
+      - name: Download uboot-sunxi source
         run: make package/boot/uboot-sunxi/download V=s
 
-      - name: Build ONLY uboot-sunxi with full verbosity (this is the real test)
+      - name: Build ONLY uboot-sunxi with full verbosity (the real test)
         run: make package/boot/uboot-sunxi/compile V=s 2>&1 | tee uboot_only.log
 
       - name: Upload isolated uboot build log (always, pass or fail)
