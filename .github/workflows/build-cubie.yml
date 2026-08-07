@@ -35,17 +35,6 @@ jobs:
             exit 1
           }
 
-      - name: Clone luci-theme-argon and luci-app-argon-config directly into package/
-        run: |
-          git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-          git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
-
-      - name: Verify Argon Makefiles are present
-        run: |
-          test -f package/luci-theme-argon/Makefile || { echo "::error::luci-theme-argon Makefile missing"; exit 1; }
-          test -f package/luci-app-argon-config/Makefile || { echo "::error::luci-app-argon-config Makefile missing"; exit 1; }
-          echo "OK: both Argon Makefiles present"
-
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
         with:
@@ -123,8 +112,6 @@ jobs:
           echo "CONFIG_PACKAGE_kmod-zram=y" >> .config
           echo "CONFIG_PACKAGE_zram-swap=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-zram-swap=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-argon-config=y" >> .config
           echo "CONFIG_PACKAGE_libatomic1=y" >> .config
           echo "CONFIG_PACKAGE_liblzma=y" >> .config
           echo "CONFIG_PACKAGE_libbz2=y" >> .config
