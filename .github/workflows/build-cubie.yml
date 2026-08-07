@@ -19,7 +19,7 @@ jobs:
             g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools \
             rsync swig unzip zlib1g-dev file wget quilt cpio libyaml-dev pkg-config
 
-      - name: Checkout Developer PR Branch Directly (pinned to stable pre-Avaota commit)
+      - name: Checkout Developer PR Branch Directly (pinned to pre-Avaota commit)
         uses: actions/checkout@v4
         with:
           repository: wigyori/openwrt
@@ -35,10 +35,10 @@ jobs:
             exit 1
           }
 
-      - name: Add Argon theme repository feeds cleanly
+      - name: Add luci-theme-argon third-party feed
         run: |
-          echo "src-git jerrykuku_argon https://github.com" >> feeds.conf.default
-          echo "src-git jerrykuku_argon_config https://github.com" >> feeds.conf.default
+          echo 'src-git luci_theme_argon https://github.com/jerrykuku/luci-theme-argon.git' >> feeds.conf.default
+          echo 'src-git luci_app_argon_config https://github.com/jerrykuku/luci-app-argon-config.git' >> feeds.conf.default
 
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
@@ -48,19 +48,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-openwrt-cortexa55-
 
-      - name: Update and Install Standard Feeds
+      - name: Update and Install Feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Verify Argon Theme Integration Is Secure
+      - name: Verify Argon feed has a valid Makefile
         run: |
-          found=$(find feeds/ -iname "Makefile" -path "*luci-theme-argon*" 2>/dev/null | head -1)
+          found=$(find feeds -iname "Makefile" -path "*luci-theme-argon*" 2>/dev/null | head -1)
           if [ -z "$found" ]; then
-            echo "::error::luci-theme-argon Makefile is missing in feeds directory — aborting"
+            echo "::error::luci-theme-argon feed did not produce a valid Makefile — aborting"
             exit 1
           fi
-          echo "OK: Found valid Argon theme structure at $found"
+          echo "OK: $found"
 
       - name: Inject Master Optimization & Package Settings
         run: |
@@ -128,6 +128,21 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-zram-swap=y" >> .config
           echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-argon-config=y" >> .config
+          echo "CONFIG_PACKAGE_libatomic1=y" >> .config
+          echo "CONFIG_PACKAGE_liblzma=y" >> .config
+          echo "CONFIG_PACKAGE_libbz2=y" >> .config
+          echo "CONFIG_PACKAGE_libsqlite3=y" >> .config
+          echo "CONFIG_PACKAGE_libjson-c=y" >> .config
+          echo "CONFIG_PACKAGE_libubox=y" >> .config
+          echo "CONFIG_PACKAGE_libubus=y" >> .config
+          echo "CONFIG_PACKAGE_libuci=y" >> .config
+          echo "CONFIG_PACKAGE_libblobmsg-json=y" >> .config
+          echo "CONFIG_PACKAGE_libnl-tiny=y" >> .config
+          echo "CONFIG_PACKAGE_libpcre2=y" >> .config
+          echo "CONFIG_PACKAGE_libgcc1=y" >> .config
+          echo "CONFIG_PACKAGE_libxml2=y" >> .config
+          echo "CONFIG_PACKAGE_libcap=y" >> .config
+          echo "CONFIG_PACKAGE_libcap-bin=y" >> .config
           make defconfig
 
       - name: Download source files
@@ -150,35 +165,14 @@ jobs:
           exec_prefix=\${prefix}
           libdir=$SYS_LIBDIR
           includedir=\${prefix}/include
+
           Name: yaml-0.1
           Description: YAML 1.1 parser and emitter library
           Version: 0.1
           Libs: -L\${libdir} -lyaml
           Cflags: -I\${includedir}
           EOF
-
-      - name: Pre-build target bootloader components to generate raw binaries
-        run: |
-          make package/boot/uboot-sunxi/compile -j$(nproc) V=s || true
-          make package/boot/arm-trusted-firmware-sunxi/compile -j$(nproc) V=s || true
-
-      - name: Intercept Missing Boot Components & Symlink Hardcoded Targets
-        run: |
-          mkdir -p staging_dir/target-aarch64_cortex-a55_musl/image/
-          REAL_UBOOT=$(find build_dir/ -name "u-boot-with-spl.bin" | head -1)
-          REAL_BOOT_SCR=$(find build_dir/ -name "boot.scr" | head -1)
-          
-          if [ -z "$REAL_UBOOT" ]; then
-            dd if=/dev/zero of=staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-u-boot-with-spl.bin bs=1k count=128
-          else
-            cp -f "$REAL_UBOOT" staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-u-boot-with-spl.bin
-          fi
-          
-          if [ -z "$REAL_BOOT_SCR" ]; then
-            echo "echo 'Bypassing broken boot layout script tracking loops'" > staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-boot.scr
-          else
-            cp -f "$REAL_BOOT_SCR" staging_dir/target-aarch64_cortex-a55_musl/image/cubie-a5e-boot.scr
-          fi
+          cat "$OWRT_PKGCONFIG_DIR/yaml-0.1.pc"
 
       - name: Compile Master Image
         run: make -j$(nproc) 2>&1 | tee build_full.log
@@ -192,14 +186,20 @@ jobs:
 
       - name: Verify real U-Boot binary was produced
         run: |
-          f=$(find build_dir bin staging_dir -iname "*cubie-a5e*u-boot*with-spl*" -o -name "cubie-a5e-u-boot-with-spl.bin" 2>/dev/null | head -1)
+          f=$(find build_dir bin staging_dir -iname "*cubie-a5e*u-boot*with-spl*" 2>/dev/null | head -1)
           if [ -z "$f" ]; then
             echo "::error::No U-Boot SPL binary found for cubie-a5e — build did not actually produce a real bootloader"
             exit 1
           fi
-          echo "OK: Found real binary mapping targets at $f"
+          size=$(stat -c%s "$f")
+          if [ "$size" -lt 100000 ]; then
+            echo "::error::U-Boot SPL binary ($f) is only $size bytes — likely fake/corrupt, not a real bootloader"
+            exit 1
+          fi
+          echo "OK: found real U-Boot binary at $f ($size bytes)"
 
       - name: Upload Perfect Flashable Image File
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Ultimate_Native_Radxa_A5E_OpenWRT
