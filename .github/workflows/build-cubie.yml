@@ -35,12 +35,10 @@ jobs:
             exit 1
           }
 
-      - name: Clone Argon Theme and Config Natively into Packages
+      - name: Add Argon theme repository feeds cleanly
         run: |
-          # Use the official source-build method by cloning directly into the package directory
-          mkdir -p package/community
-          git clone -b master https://github.com package/community/luci-theme-argon
-          git clone -b master https://github.com package/community/luci-app-argon-config
+          echo "src-git jerrykuku_argon https://github.com" >> feeds.conf.default
+          echo "src-git jerrykuku_argon_config https://github.com" >> feeds.conf.default
 
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
@@ -57,11 +55,12 @@ jobs:
 
       - name: Verify Argon Theme Integration Is Secure
         run: |
-          if [ ! -f package/community/luci-theme-argon/Makefile ]; then
-            echo "::error::luci-theme-argon Makefile is missing in package directory — aborting"
+          found=$(find feeds/ -iname "Makefile" -path "*luci-theme-argon*" 2>/dev/null | head -1)
+          if [ -z "$found" ]; then
+            echo "::error::luci-theme-argon Makefile is missing in feeds directory — aborting"
             exit 1
           fi
-          echo "OK: Found valid Argon theme structure at package/community/luci-theme-argon/Makefile"
+          echo "OK: Found valid Argon theme structure at $found"
 
       - name: Inject Master Optimization & Package Settings
         run: |
@@ -150,7 +149,7 @@ jobs:
           prefix=/usr
           exec_prefix=\${prefix}
           libdir=$SYS_LIBDIR
-          includedir=\ Pala/include
+          includedir=\${prefix}/include
           Name: yaml-0.1
           Description: YAML 1.1 parser and emitter library
           Version: 0.1
