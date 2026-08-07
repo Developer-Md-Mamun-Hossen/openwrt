@@ -35,6 +35,11 @@ jobs:
             exit 1
           }
 
+      - name: Add luci-theme-argon third-party feed
+        run: |
+          echo 'src-git luci_theme_argon https://github.com/jerrykuku/luci-theme-argon.git' >> feeds.conf.default
+          echo 'src-git luci_app_argon_config https://github.com/jerrykuku/luci-app-argon-config.git' >> feeds.conf.default
+
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
         with:
@@ -47,6 +52,15 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+      - name: Verify Argon feed has a valid Makefile
+        run: |
+          found=$(find feeds -iname "Makefile" -path "*luci-theme-argon*" 2>/dev/null | head -1)
+          if [ -z "$found" ]; then
+            echo "::error::luci-theme-argon feed did not produce a valid Makefile — aborting"
+            exit 1
+          fi
+          echo "OK: $found"
 
       - name: Inject Master Optimization & Package Settings
         run: |
@@ -80,9 +94,7 @@ jobs:
           echo "CONFIG_PACKAGE_kmod-veth=y" >> .config
           echo "CONFIG_PACKAGE_kmod-fs-btrfs=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-extra=y" >> .config
-          echo "CONFIG_PACKAGE_iptables-mod-fullconenat=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-ipt-fullconenat=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-nft-fullconenat=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-nft-fullcone=y" >> .config
           echo "CONFIG_KERNEL_TCP_CONG_BBR=y" >> .config
           echo "CONFIG_PACKAGE_irqbalance=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-irqbalance=y" >> .config
@@ -111,6 +123,11 @@ jobs:
           echo "CONFIG_PACKAGE_wget-ssl=y" >> .config
           echo "CONFIG_PACKAGE_ca-bundle=y" >> .config
           echo "CONFIG_PACKAGE_ca-certificates=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-zram=y" >> .config
+          echo "CONFIG_PACKAGE_zram-swap=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-zram-swap=y" >> .config
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-argon-config=y" >> .config
           make defconfig
 
       - name: Download source files
