@@ -35,10 +35,16 @@ jobs:
             exit 1
           }
 
-      - name: Add luci-theme-argon third-party feed
+      - name: Clone luci-theme-argon and luci-app-argon-config directly into package/
         run: |
-          echo 'src-git luci_theme_argon https://github.com/jerrykuku/luci-theme-argon.git' >> feeds.conf.default
-          echo 'src-git luci_app_argon_config https://github.com/jerrykuku/luci-app-argon-config.git' >> feeds.conf.default
+          git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+          git clone https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+
+      - name: Verify Argon Makefiles are present
+        run: |
+          test -f package/luci-theme-argon/Makefile || { echo "::error::luci-theme-argon Makefile missing"; exit 1; }
+          test -f package/luci-app-argon-config/Makefile || { echo "::error::luci-app-argon-config Makefile missing"; exit 1; }
+          echo "OK: both Argon Makefiles present"
 
       - name: Cache OpenWRT Toolchain (Speeds up next builds!)
         uses: actions/cache@v4
@@ -52,15 +58,6 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-      - name: Verify Argon feed has a valid Makefile
-        run: |
-          found=$(find feeds -iname "Makefile" -path "*luci-theme-argon*" 2>/dev/null | head -1)
-          if [ -z "$found" ]; then
-            echo "::error::luci-theme-argon feed did not produce a valid Makefile — aborting"
-            exit 1
-          fi
-          echo "OK: $found"
 
       - name: Inject Master Optimization & Package Settings
         run: |
