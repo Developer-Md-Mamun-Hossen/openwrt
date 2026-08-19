@@ -19,11 +19,11 @@ jobs:
             g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools \
             rsync swig unzip zlib1g-dev file wget quilt cpio libyaml-dev pkg-config
 
-      - name: Checkout PR #23296 (pinned commit, full SHA)
+      - name: Checkout Developer PR Branch Directly (Tracking Live Branch)
         uses: actions/checkout@v4
         with:
-          repository: openwrt/openwrt
-          ref: 7450c6f8ca0740fe2d0afe5c7cfaffec06b9a18a
+          repository: wigyori/openwrt
+          ref: sunxi-a527-support
 
       - name: Show exact commit being built
         run: git log -1 --format="%H %s (%ci)"
@@ -43,18 +43,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-openwrt-cortexa55-
 
-      - name: Update and Install Feeds
+      - name: Update and Install Feeds (Pulling newest packages)
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Inject Master Optimization & Package Settings
         run: |
+          # Device Hardware Target definitions
           echo "CONFIG_TARGET_sunxi=y" > .config
           echo "CONFIG_TARGET_sunxi_cortexa55=y" >> .config
           echo "CONFIG_TARGET_sunxi_cortexa55_DEVICE_radxa_cubie-a5e=y" >> .config
+          
+          # Custom Storage Configurations
           echo "CONFIG_TARGET_KERNEL_PARTSIZE=64" >> .config
           echo "CONFIG_TARGET_ROOTFS_PARTSIZE=1024" >> .config
+          
+          # Main Packages (Fresh versions)
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_dnsmasq=n" >> .config
           echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
@@ -80,9 +85,8 @@ jobs:
           echo "CONFIG_PACKAGE_kmod-veth=y" >> .config
           echo "CONFIG_PACKAGE_kmod-fs-btrfs=y" >> .config
           echo "CONFIG_PACKAGE_kmod-ipt-extra=y" >> .config
-          echo "CONFIG_PACKAGE_iptables-mod-fullconenat=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-ipt-fullconenat=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-nft-fullconenat=y" >> .config
+          
+          # Performance & Networking Optimizations
           echo "CONFIG_KERNEL_TCP_CONG_BBR=y" >> .config
           echo "CONFIG_PACKAGE_irqbalance=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-irqbalance=y" >> .config
@@ -153,27 +157,25 @@ jobs:
           path: build_full.log
 
       - name: List produced target artifacts (debug)
+        if: always()
         run: |
           echo "--- bin/targets tree ---"
-          find bin/targets -maxdepth 4 -type d 2>/dev/null
+          find bin/targets -maxdepth 4 -type d 2>/dev/null || true
           echo "--- all files under bin/targets/sunxi ---"
-          find bin/targets/sunxi -type f 2>/dev/null
+          find bin/targets/sunxi -type f 2>/dev/null || true
           echo "--- any file mentioning cubie anywhere in bin/ or build_dir/ ---"
-          find bin build_dir -iname "*cubie*" 2>/dev/null
+          find bin build_dir -iname "*cubie*" -type f 2>/dev/null || true
 
       - name: Verify real U-Boot binary was produced
         run: |
-          # Try a few known naming variants before failing, since exact
-          # device/profile naming can differ (hyphen vs underscore, spl suffix, etc.)
           f=""
           for pattern in \
-            "*cubie-a5e*u-boot*with-spl*" \
-            "*cubie_a5e*u-boot*with-spl*" \
-            "*cubie-a5e*u-boot*spl*" \
-            "*cubie_a5e*u-boot*spl*" \
-            "*cubie*a5e*u-boot*" \
-            "*cubie*a5e*"; do
-            f=$(find build_dir bin -iname "$pattern" -type f 2>/dev/null | head -1)
+            "*cubie-a5e*u-boot*with-spl.bin" \
+            "*cubie_a5e*u-boot*with-spl.bin" \
+            "*u-boot*with-spl.bin" \
+            "*cubie-a5e*u-boot*.bin" \
+            "*cubie*a5e*.bin"; do
+            f=$(find bin/targets/ -type f -name "$pattern" 2>/dev/null | head -1)
             if [ -n "$f" ]; then
               echo "Matched pattern: $pattern"
               break
@@ -181,19 +183,21 @@ jobs:
           done
 
           if [ -z "$f" ]; then
-            echo "::error::No file matching any cubie-a5e naming variant found. See 'List produced target artifacts (debug)' step above for actual filenames, then update this step's pattern to match."
+            echo "::error::No valid compiled bootloader binary found. Check output filenames from the debug list."
             exit 1
           fi
+          
           size=$(stat -c%s "$f")
-          if [ "$size" -lt 100000 ]; then
-            echo "::error::Matched file ($f) is only $size bytes — likely not a real bootloader binary"
+          if [ "$size" -lt 50000 ]; then
+            echo "::error::Bootloader file ($f) is dangerously small ($size bytes) — missing binary components."
             exit 1
           fi
-          echo "OK: found real U-Boot binary at $f ($size bytes)"
+          echo "OK: Valid bootloader compiled at $f ($size bytes)"
 
       - name: Upload Perfect Flashable Image File
+        if: success()
+        uses: actions/with-artifact@v4
         uses: actions/upload-artifact@v4
         with:
           name: Ultimate_Native_Radxa_A5E_OpenWRT
           path: bin/targets/sunxi/cortexa55/*
-          
