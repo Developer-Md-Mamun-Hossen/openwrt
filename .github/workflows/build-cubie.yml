@@ -19,11 +19,11 @@ jobs:
             g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools \
             rsync swig unzip zlib1g-dev file wget quilt cpio libyaml-dev pkg-config
 
-      - name: Checkout Developer PR Branch Directly (pinned to pre-Avaota commit)
+      - name: Checkout Developer PR Branch Directly (pinned to latest all-green commit)
         uses: actions/checkout@v4
         with:
           repository: wigyori/openwrt
-          ref: 442c6c8256be6c77b5c6af55332bc2e6ec26a720
+          ref: 7450c6f
 
       - name: Show exact commit being built
         run: git log -1 --format="%H %s (%ci)"
@@ -127,6 +127,9 @@ jobs:
           echo "CONFIG_PACKAGE_libxml2=y" >> .config
           echo "CONFIG_PACKAGE_libcap=y" >> .config
           echo "CONFIG_PACKAGE_libcap-bin=y" >> .config
+          echo "CONFIG_PACKAGE_iperf3=y" >> .config
+          echo "CONFIG_PACKAGE_miniupnpd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config
           make defconfig
 
       - name: Download source files
@@ -138,7 +141,7 @@ jobs:
       - name: Build toolchain (needed to cross-compile everything)
         run: make toolchain/compile -j$(nproc) 2>&1 | tail -100
 
-      - name: Fix missing libyaml pkg-config file for OpenWrt's sandboxed PKG_CONFIG_PATH
+      - name: Fix missing libyaml pkg-config file for OpenWrt's sandboxed PKG_CONFIG_PATH (safety net)
         run: |
           MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
           SYS_LIBDIR="/usr/lib/$MULTIARCH"
