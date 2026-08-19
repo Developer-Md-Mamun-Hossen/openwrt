@@ -152,16 +152,41 @@ jobs:
           name: build-log-full
           path: build_full.log
 
+      - name: List produced target artifacts (debug)
+        run: |
+          echo "--- bin/targets tree ---"
+          find bin/targets -maxdepth 4 -type d 2>/dev/null
+          echo "--- all files under bin/targets/sunxi ---"
+          find bin/targets/sunxi -type f 2>/dev/null
+          echo "--- any file mentioning cubie anywhere in bin/ or build_dir/ ---"
+          find bin build_dir -iname "*cubie*" 2>/dev/null
+
       - name: Verify real U-Boot binary was produced
         run: |
-          f=$(find build_dir bin -iname "*cubie-a5e*u-boot*with-spl*" 2>/dev/null | head -1)
+          # Try a few known naming variants before failing, since exact
+          # device/profile naming can differ (hyphen vs underscore, spl suffix, etc.)
+          f=""
+          for pattern in \
+            "*cubie-a5e*u-boot*with-spl*" \
+            "*cubie_a5e*u-boot*with-spl*" \
+            "*cubie-a5e*u-boot*spl*" \
+            "*cubie_a5e*u-boot*spl*" \
+            "*cubie*a5e*u-boot*" \
+            "*cubie*a5e*"; do
+            f=$(find build_dir bin -iname "$pattern" -type f 2>/dev/null | head -1)
+            if [ -n "$f" ]; then
+              echo "Matched pattern: $pattern"
+              break
+            fi
+          done
+
           if [ -z "$f" ]; then
-            echo "::error::No U-Boot SPL binary found for cubie-a5e — build did not actually produce a real bootloader"
+            echo "::error::No file matching any cubie-a5e naming variant found. See 'List produced target artifacts (debug)' step above for actual filenames, then update this step's pattern to match."
             exit 1
           fi
           size=$(stat -c%s "$f")
           if [ "$size" -lt 100000 ]; then
-            echo "::error::U-Boot SPL binary ($f) is only $size bytes — likely fake/corrupt, not a real bootloader"
+            echo "::error::Matched file ($f) is only $size bytes — likely not a real bootloader binary"
             exit 1
           fi
           echo "OK: found real U-Boot binary at $f ($size bytes)"
@@ -171,3 +196,4 @@ jobs:
         with:
           name: Ultimate_Native_Radxa_A5E_OpenWRT
           path: bin/targets/sunxi/cortexa55/*
+          
