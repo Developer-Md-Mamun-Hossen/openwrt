@@ -35,14 +35,6 @@ jobs:
             exit 1
           }
 
-      - name: Cache OpenWRT Toolchain (Speeds up next builds!)
-        uses: actions/cache@v4
-        with:
-          path: staging_dir/toolchain-*
-          key: ${{ runner.os }}-openwrt-cortexa55-${{ hashFiles('target/linux/sunxi/Makefile') }}
-          restore-keys: |
-            ${{ runner.os }}-openwrt-cortexa55-
-
       - name: Update and Install Feeds (Pulling newest packages)
         run: |
           ./scripts/feeds update -a
