@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: wigyori/openwrt
-          ref: 2b2862f
+          ref: 2b2862f04eddbbe845e657ad0ffe917eae8ed856
 
       - name: Show exact commit being built
         run: git log -1 --format="%H %s (%ci)"
